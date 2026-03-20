@@ -198,6 +198,53 @@ pub const Registry = struct {
     pub const default_url_hash = bun.Wyhash11.hash(0, strings.withoutTrailingSlash(default_url));
     pub const BodyPool = ObjectPool(MutableString, MutableString.init2048, true, 8);
 
+    /// Resolves the default registry scope from bunfig config and environment
+    /// variables with the standard priority: env vars > bunfig > default.
+    /// Used by both `bun install` (PackageManagerOptions) and `bun create`.
+    pub fn resolveDefaultScope(
+        bun_install: ?*const api.BunInstall,
+        allocator: std.mem.Allocator,
+        env: *DotEnv.Loader,
+    ) OOM!Scope {
+        // 1. Start with bunfig base (or default).
+        var base = std.mem.zeroes(api.NpmRegistry);
+        if (bun_install) |config| {
+            if (config.default_registry) |registry| {
+                base = registry;
+            }
+        }
+        if (base.url.len == 0) base.url = default_url;
+
+        // Scope.fromAPI handles $ENV_VAR expansion.
+        var scope = try Scope.fromAPI("", base, allocator, env);
+
+        // 2. Environment variables override bunfig.
+        const registry_keys = [_]string{
+            "BUN_CONFIG_REGISTRY",
+            "NPM_CONFIG_REGISTRY",
+            "npm_config_registry",
+        };
+        var did_set = false;
+        inline for (registry_keys) |registry_key| {
+            if (!did_set) {
+                if (env.get(registry_key)) |registry_| {
+                    if (registry_.len > 0 and
+                        (strings.startsWith(registry_, "https://") or
+                            strings.startsWith(registry_, "http://")))
+                    {
+                        var api_registry = std.mem.zeroes(api.NpmRegistry);
+                        api_registry.url = registry_;
+                        api_registry.token = scope.token;
+                        scope = try Scope.fromAPI("", api_registry, allocator, env);
+                        did_set = true;
+                    }
+                }
+            }
+        }
+
+        return scope;
+    }
+
     pub const Scope = struct {
         name: string = "",
         // https://github.com/npm/npm-registry-fetch/blob/main/lib/auth.js#L96
