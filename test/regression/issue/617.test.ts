@@ -4,6 +4,14 @@ import { bunEnv, bunExe, tempDir } from "harness";
 // Test that `bun create` respects custom registry configuration
 // Issue: https://github.com/oven-sh/bun/issues/617
 
+// Base env with all registry env vars cleared to prevent CI env interference.
+const cleanEnv: NodeJS.Dict<string> = {
+  ...bunEnv,
+  BUN_CONFIG_REGISTRY: undefined,
+  NPM_CONFIG_REGISTRY: undefined,
+  npm_config_registry: undefined,
+};
+
 // Stub server that returns 500 for all requests, tracking hits to prove
 // bun create actually contacted it.
 function stubRegistry() {
@@ -31,7 +39,7 @@ describe("bun create respects custom registry", () => {
         cmd: [bunExe(), "create", "elysia", "my-app", "--no-install", "--no-git"],
         cwd: String(dir),
         env: {
-          ...bunEnv,
+          ...cleanEnv,
           BUN_CONFIG_REGISTRY: stub.url,
         },
         stderr: "pipe",
@@ -61,7 +69,7 @@ describe("bun create respects custom registry", () => {
         cmd: [bunExe(), "create", "elysia", "my-app", "--no-install", "--no-git"],
         cwd: String(dir),
         env: {
-          ...bunEnv,
+          ...cleanEnv,
           NPM_CONFIG_REGISTRY: stub.url,
         },
         stderr: "pipe",
@@ -90,7 +98,7 @@ describe("bun create respects custom registry", () => {
         cmd: [bunExe(), "create", "elysia", "my-app", "--no-install", "--no-git"],
         cwd: String(dir),
         env: {
-          ...bunEnv,
+          ...cleanEnv,
           npm_config_registry: stub.url,
         },
         stderr: "pipe",
@@ -120,7 +128,7 @@ describe("bun create respects custom registry", () => {
       await using proc = Bun.spawn({
         cmd: [bunExe(), "create", "elysia", "my-app", "--no-install", "--no-git"],
         cwd: String(dir),
-        env: bunEnv,
+        env: cleanEnv,
         stderr: "pipe",
         stdout: "pipe",
       });
@@ -149,7 +157,7 @@ describe("bun create respects custom registry", () => {
         cmd: [bunExe(), "create", "elysia", "my-app", "--no-install", "--no-git"],
         cwd: String(dir),
         env: {
-          ...bunEnv,
+          ...cleanEnv,
           TEST_CUSTOM_REGISTRY: stub.url,
         },
         stderr: "pipe",
@@ -183,7 +191,7 @@ describe("bun create respects custom registry", () => {
         cmd: [bunExe(), "create", "elysia", "my-app", "--no-install", "--no-git"],
         cwd: String(dir),
         env: {
-          ...bunEnv,
+          ...cleanEnv,
           BUN_CONFIG_REGISTRY: stub.url,
         },
         stderr: "pipe",
