@@ -1,4 +1,4 @@
-const PublicArray = Array;
+const PublicArray = globalThis.Array;
 
 declare global {
   interface NumberConstructor {
