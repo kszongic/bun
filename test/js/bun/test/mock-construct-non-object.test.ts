@@ -16,11 +16,7 @@ test("jest.fn() with no implementation does not crash on Reflect.construct", () 
 
 test("spyOn mock does not crash on Reflect.construct", () => {
   const obj = { prop: 42 };
-  const spy = jest.spyOn(obj, "prop" as any);
-  try {
-    const result = Reflect.construct(spy, []);
-    expect(result).toBeDefined();
-  } finally {
-    spy.mockRestore();
-  }
+  using spy = jest.spyOn(obj, "prop" as any);
+  const result = Reflect.construct(spy, []);
+  expect(result).toBeDefined();
 });

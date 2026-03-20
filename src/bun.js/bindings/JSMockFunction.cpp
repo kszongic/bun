@@ -1366,6 +1366,9 @@ JSC_DEFINE_HOST_FUNCTION(jsMockFunctionWithImplementationCleanup, (JSC::JSGlobal
     }
 
     auto fn = tryJSDynamicCast<JSMockFunction*>(ctx->internalField(0).get());
+    if (!fn) {
+        return JSValue::encode(jsUndefined());
+    }
     fn->implementation.set(vm, fn, ctx->internalField(1).get());
     fn->tail.set(vm, fn, ctx->internalField(2).get());
     fn->fallbackImplmentation.set(vm, fn, ctx->internalField(3).get());
