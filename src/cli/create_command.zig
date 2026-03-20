@@ -1841,17 +1841,29 @@ pub const Example = struct {
 
     var url: URL = undefined;
 
-    /// Gets the registry URL from configuration, environment variables, or falls back to default.
-    /// Priority matches `bun install` (PackageManagerOptions.zig):
-    ///   env vars (BUN_CONFIG_REGISTRY > NPM_CONFIG_REGISTRY > npm_config_registry) > bunfig.toml > default
+    /// Resolves the registry URL using the same logic as `bun install`
+    /// (see PackageManagerOptions.zig). Reuses Npm.Registry.Scope.fromAPI
+    /// for $ENV_VAR expansion and URL parsing.
+    /// Priority: env vars > bunfig.toml > default
     fn getRegistryUrl(ctx: Command.Context, env_loader: *DotEnv.Loader) string {
-        // Environment variables override bunfig, matching PackageManagerOptions behavior.
+        // 1. Start with bunfig base (or default), using Scope.fromAPI for
+        //    $ENV_VAR expansion — same as PackageManagerOptions lines 245-262.
+        var base = std.mem.zeroes(Api.NpmRegistry);
+        if (ctx.install) |install| {
+            if (install.default_registry) |registry| {
+                base = registry;
+            }
+        }
+        if (base.url.len == 0) base.url = Npm.Registry.default_url;
+        const scope = Npm.Registry.Scope.fromAPI("", base, ctx.allocator, env_loader) catch
+            return Npm.Registry.default_url;
+
+        // 2. Check env vars for override — same as PackageManagerOptions lines 411-436.
         const registry_keys = [_]string{
             "BUN_CONFIG_REGISTRY",
             "NPM_CONFIG_REGISTRY",
             "npm_config_registry",
         };
-
         inline for (registry_keys) |key| {
             if (env_loader.map.get(key)) |registry_url| {
                 if (registry_url.len > 0 and
@@ -1863,32 +1875,8 @@ pub const Example = struct {
             }
         }
 
-        // Then check bunfig configuration.
-        if (ctx.install) |install| {
-            if (install.default_registry) |registry| {
-                if (registry.url.len > 0) {
-                    // Expand $ENV_VAR syntax in bunfig registry URLs,
-                    // matching Scope.fromAPI in npm.zig.
-                    if (strings.startsWithChar(registry.url, '$')) {
-                        if (env_loader.map.get(strings.trim(registry.url[1..], "/"))) |replaced_url| {
-                            if (replaced_url.len > 0 and
-                                (strings.startsWith(replaced_url, "https://") or
-                                    strings.startsWith(replaced_url, "http://")))
-                            {
-                                return replaced_url;
-                            }
-                        }
-                        // Env var not found or invalid — don't return the
-                        // literal "$VAR" placeholder; fall through to default.
-                    } else {
-                        return registry.url;
-                    }
-                }
-            }
-        }
-
-        // Fall back to default npm registry
-        return Npm.Registry.default_url;
+        // 3. Use the resolved scope URL (with $ENV_VAR already expanded).
+        return scope.url.href;
     }
 
     var app_name_buf: [512]u8 = undefined;
@@ -2509,6 +2497,7 @@ const js_ast = bun.ast;
 const logger = bun.logger;
 const strings = bun.strings;
 const Archiver = bun.libarchive.Archiver;
+const Api = bun.schema.api;
 const Npm = bun.install.Npm;
 
 const HTTP = bun.http;
