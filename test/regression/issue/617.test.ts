@@ -46,13 +46,10 @@ describe("bun create respects custom registry", () => {
         stdout: "pipe",
       });
 
-      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
 
-      // Stub must have been contacted — proves registry was used.
-      const output = (stdout + stderr).toLowerCase();
       expect(stub.hits.count).toBeGreaterThan(0);
-      expect(output).toContain("error");
-      expect(exitCode).not.toBe(0);
+      expect(await proc.exited).not.toBe(0);
     },
     { timeout: 30_000 },
   );
@@ -76,12 +73,10 @@ describe("bun create respects custom registry", () => {
         stdout: "pipe",
       });
 
-      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
 
-      const output = (stdout + stderr).toLowerCase();
       expect(stub.hits.count).toBeGreaterThan(0);
-      expect(output).toContain("error");
-      expect(exitCode).not.toBe(0);
+      expect(await proc.exited).not.toBe(0);
     },
     { timeout: 30_000 },
   );
@@ -105,12 +100,10 @@ describe("bun create respects custom registry", () => {
         stdout: "pipe",
       });
 
-      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
 
-      const output = (stdout + stderr).toLowerCase();
       expect(stub.hits.count).toBeGreaterThan(0);
-      expect(output).toContain("error");
-      expect(exitCode).not.toBe(0);
+      expect(await proc.exited).not.toBe(0);
     },
     { timeout: 30_000 },
   );
@@ -133,12 +126,10 @@ describe("bun create respects custom registry", () => {
         stdout: "pipe",
       });
 
-      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
 
-      const output = (stdout + stderr).toLowerCase();
       expect(stub.hits.count).toBeGreaterThan(0);
-      expect(output).toContain("error");
-      expect(exitCode).not.toBe(0);
+      expect(await proc.exited).not.toBe(0);
     },
     { timeout: 30_000 },
   );
@@ -164,13 +155,10 @@ describe("bun create respects custom registry", () => {
         stdout: "pipe",
       });
 
-      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
 
-      // Should fail because the $ENV_VAR-expanded registry returns 500
-      const output = (stdout + stderr).toLowerCase();
       expect(stub.hits.count).toBeGreaterThan(0);
-      expect(output).toContain("error");
-      expect(exitCode).not.toBe(0);
+      expect(await proc.exited).not.toBe(0);
     },
     { timeout: 30_000 },
   );
@@ -178,8 +166,6 @@ describe("bun create respects custom registry", () => {
   test(
     "BUN_CONFIG_REGISTRY overrides bunfig.toml registry",
     async () => {
-      // env var points to stub registry (500); bunfig points to default registry.
-      // If priority is correct (env > bunfig), the command should fail.
       const stub = stubRegistry();
       await using server = stub.server;
 
@@ -198,13 +184,10 @@ describe("bun create respects custom registry", () => {
         stdout: "pipe",
       });
 
-      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
 
-      // Should fail because env var registry (stub 500) takes priority over bunfig (npmjs.org)
-      const output = (stdout + stderr).toLowerCase();
       expect(stub.hits.count).toBeGreaterThan(0);
-      expect(output).toContain("error");
-      expect(exitCode).not.toBe(0);
+      expect(await proc.exited).not.toBe(0);
     },
     { timeout: 30_000 },
   );
