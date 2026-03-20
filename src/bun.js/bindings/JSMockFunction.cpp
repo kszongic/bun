@@ -1434,7 +1434,7 @@ JSC_DEFINE_HOST_FUNCTION(jsMockFunctionWithImplementation, (JSC::JSGlobalObject 
     }
 
     thisObject->implementation.set(vm, thisObject, lastImpl);
-    thisObject->tail.set(vm, thisObject, lastImpl);
+    thisObject->tail.set(vm, thisObject, lastTail);
     thisObject->fallbackImplmentation.set(vm, thisObject, lastFallback);
 
     return JSC::JSValue::encode(jsUndefined());
