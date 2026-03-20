@@ -20,3 +20,10 @@ test("spyOn mock does not crash on Reflect.construct", () => {
   const result = Reflect.construct(spy, []);
   expect(result).toBeDefined();
 });
+
+test("spyOn with numeric key does not crash on Reflect.construct", () => {
+  const obj = { 128: undefined } as any;
+  using spy = jest.spyOn(obj, 128 as any);
+  const result = Reflect.construct(spy, []);
+  expect(result).toBeDefined();
+});
