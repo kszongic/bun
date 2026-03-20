@@ -5,6 +5,11 @@ test("pathToFileURL doesn't leak memory", () => {
   expect([path.join(import.meta.dir, "pathToFileURL-leak-fixture.js")]).toRun();
 });
 
+test("pathToFileURL throws RangeError for extremely long relative paths", () => {
+  const longPath = Buffer.alloc(8192, "a").toString() + "/" + Buffer.alloc(8192, "b").toString();
+  expect(() => Bun.pathToFileURL(longPath)).toThrow(RangeError);
+});
+
 test("pathToFileURL escapes special characters", () => {
   const cases = [
     ["\0", "%00"], // '\0' == 0x00
