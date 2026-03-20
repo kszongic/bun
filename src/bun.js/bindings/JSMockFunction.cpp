@@ -93,6 +93,7 @@ inline To tryJSDynamicCast(JSC::WriteBarrier<WriteBarrierT>& from)
 }
 
 JSC_DECLARE_HOST_FUNCTION(jsMockFunctionCall);
+JSC_DECLARE_HOST_FUNCTION(jsMockFunctionConstruct);
 JSC_DECLARE_CUSTOM_GETTER(jsMockFunctionGetter_protoImpl);
 JSC_DECLARE_CUSTOM_GETTER(jsMockFunctionGetter_mock);
 JSC_DECLARE_HOST_FUNCTION(jsMockFunctionGetter_mockGetLastCall);
@@ -469,7 +470,7 @@ public:
     }
 
     JSMockFunction(JSC::VM& vm, JSC::Structure* structure, CallbackKind wrapKind)
-        : Base(vm, structure, jsMockFunctionCall, jsMockFunctionCall)
+        : Base(vm, structure, jsMockFunctionCall, jsMockFunctionConstruct)
     {
         initMock();
     }
@@ -843,18 +844,9 @@ JSC_DEFINE_HOST_FUNCTION(jsMockFunctionCall, (JSGlobalObject * lexicalGlobalObje
         throwTypeError(globalObject, scope, "Expected callee to be mock function"_s);
         return {};
     }
-    bool isConstruct = callframe->newTarget() != jsUndefined();
 
     JSC::ArgList args = JSC::ArgList(callframe);
     JSValue thisValue = callframe->thisValue();
-
-    // InternalFunction construct requires the result to be an object.
-    // If the mock returns a non-object (e.g. undefined), fall back to thisValue.
-    auto ensureConstructResult = [&](JSValue result) -> JSC::EncodedJSValue {
-        if (isConstruct && !result.isObject())
-            return JSValue::encode(thisValue);
-        return JSValue::encode(result);
-    };
     JSC::JSArray* argumentsArray = nullptr;
     {
         JSC::ObjectInitializationScope object(vm);
@@ -970,12 +962,12 @@ JSC_DEFINE_HOST_FUNCTION(jsMockFunctionCall, (JSGlobalObject * lexicalGlobalObje
                 fn->returnValues.set(vm, fn, returnValuesArray);
             }
 
-            return ensureConstructResult(returnValue);
+            return JSValue::encode(returnValue);
         }
         case JSMockImplementation::Kind::ReturnValue: {
             JSValue returnValue = impl->underlyingValue.get();
             setReturnValue(createMockResult(vm, globalObject, "return"_s, returnValue));
-            return ensureConstructResult(returnValue);
+            return JSValue::encode(returnValue);
         }
         case JSMockImplementation::Kind::ReturnThis: {
             setReturnValue(createMockResult(vm, globalObject, "return"_s, thisValue));
@@ -994,7 +986,19 @@ JSC_DEFINE_HOST_FUNCTION(jsMockFunctionCall, (JSGlobalObject * lexicalGlobalObje
     }
 
     setReturnValue(createMockResult(vm, globalObject, "return"_s, jsUndefined()));
-    return ensureConstructResult(jsUndefined());
+    return JSValue::encode(jsUndefined());
+}
+
+// Construct wrapper: delegates to jsMockFunctionCall, then ensures the result is
+// an object. JSC's executeConstruct calls asObject() on the return value of
+// InternalFunction construct handlers, so non-object results would crash.
+JSC_DEFINE_HOST_FUNCTION(jsMockFunctionConstruct, (JSGlobalObject * lexicalGlobalObject, CallFrame* callframe))
+{
+    JSC::EncodedJSValue result = jsMockFunctionCall(lexicalGlobalObject, callframe);
+    JSValue decoded = JSValue::decode(result);
+    if (!decoded.isObject())
+        return JSValue::encode(callframe->thisValue());
+    return result;
 }
 
 void JSMockFunctionPrototype::finishCreation(JSC::VM& vm, JSC::JSGlobalObject* globalObject)
