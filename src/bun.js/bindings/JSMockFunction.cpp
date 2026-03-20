@@ -82,7 +82,14 @@ inline To tryJSDynamicCast(JSC::WriteBarrier<WriteBarrierT>& from)
     if (!from) [[unlikely]]
         return nullptr;
 
-    return jsDynamicCast<To>(from.get());
+    if constexpr (std::is_same_v<WriteBarrierT, JSC::Unknown>) {
+        auto value = from.get();
+        if (!value.isCell()) [[unlikely]]
+            return nullptr;
+        return jsDynamicCast<To>(value.asCell());
+    } else {
+        return jsDynamicCast<To>(from.get());
+    }
 }
 
 JSC_DECLARE_HOST_FUNCTION(jsMockFunctionCall);
@@ -381,9 +388,9 @@ public:
                 }
             } else if (auto index = parseIndex(this->spyIdentifier)) {
                 // Use putDirectIndex for numeric property keys (e.g., spyOn(arr, 0))
-                target->putDirectIndex(globalObject(), *index, implValue, this->spyAttributes, PutDirectIndexLikePutDirect);
+                target->putDirectIndex(globalObject(), *index, implValue, this->spyAttributes & ~PropertyAttribute::Accessor, PutDirectIndexLikePutDirect);
             } else {
-                target->putDirect(this->vm(), this->spyIdentifier, implValue, this->spyAttributes);
+                target->putDirect(this->vm(), this->spyIdentifier, implValue, this->spyAttributes & ~PropertyAttribute::Accessor);
             }
         }
 
@@ -836,9 +843,18 @@ JSC_DEFINE_HOST_FUNCTION(jsMockFunctionCall, (JSGlobalObject * lexicalGlobalObje
         throwTypeError(globalObject, scope, "Expected callee to be mock function"_s);
         return {};
     }
+    bool isConstruct = callframe->newTarget() != jsUndefined();
 
     JSC::ArgList args = JSC::ArgList(callframe);
     JSValue thisValue = callframe->thisValue();
+
+    // InternalFunction construct requires the result to be an object.
+    // If the mock returns a non-object (e.g. undefined), fall back to thisValue.
+    auto ensureConstructResult = [&](JSValue result) -> JSC::EncodedJSValue {
+        if (isConstruct && !result.isObject())
+            return JSValue::encode(thisValue);
+        return JSValue::encode(result);
+    };
     JSC::JSArray* argumentsArray = nullptr;
     {
         JSC::ObjectInitializationScope object(vm);
@@ -915,7 +931,7 @@ JSC_DEFINE_HOST_FUNCTION(jsMockFunctionCall, (JSGlobalObject * lexicalGlobalObje
         if (impl->isOnce()) {
             auto next = impl->nextValueOrSentinel.get();
             fn->implementation.set(vm, fn, next);
-            if (next.isNumber() || !jsDynamicCast<JSMockImplementation*>(next)->isOnce()) {
+            if (auto* nextImpl = tryJSDynamicCast<JSMockImplementation*>(next); !nextImpl || !nextImpl->isOnce()) {
                 fn->tail.clear();
             }
         }
@@ -954,12 +970,12 @@ JSC_DEFINE_HOST_FUNCTION(jsMockFunctionCall, (JSGlobalObject * lexicalGlobalObje
                 fn->returnValues.set(vm, fn, returnValuesArray);
             }
 
-            return JSValue::encode(returnValue);
+            return ensureConstructResult(returnValue);
         }
         case JSMockImplementation::Kind::ReturnValue: {
             JSValue returnValue = impl->underlyingValue.get();
             setReturnValue(createMockResult(vm, globalObject, "return"_s, returnValue));
-            return JSValue::encode(returnValue);
+            return ensureConstructResult(returnValue);
         }
         case JSMockImplementation::Kind::ReturnThis: {
             setReturnValue(createMockResult(vm, globalObject, "return"_s, thisValue));
@@ -978,7 +994,7 @@ JSC_DEFINE_HOST_FUNCTION(jsMockFunctionCall, (JSGlobalObject * lexicalGlobalObje
     }
 
     setReturnValue(createMockResult(vm, globalObject, "return"_s, jsUndefined()));
-    return JSValue::encode(jsUndefined());
+    return ensureConstructResult(jsUndefined());
 }
 
 void JSMockFunctionPrototype::finishCreation(JSC::VM& vm, JSC::JSGlobalObject* globalObject)
@@ -1278,7 +1294,7 @@ JSC_DEFINE_HOST_FUNCTION(jsMockFunctionGetter_mockGetLastCall, (JSC::JSGlobalObj
     JSValue callsValue = thisObject.get(globalObject, Identifier::fromString(vm, "calls"_s));
     RETURN_IF_EXCEPTION(throwScope, {});
 
-    if (auto callsArray = jsDynamicCast<JSC::JSArray*>(callsValue)) {
+    if (auto callsArray = tryJSDynamicCast<JSC::JSArray*>(callsValue)) {
         auto len = callsArray->length();
         if (len > 0) {
             return JSValue::encode(callsArray->getIndex(globalObject, len - 1));
@@ -1344,12 +1360,12 @@ MockWithImplementationCleanupData* MockWithImplementationCleanupData::create(JSC
 JSC_DEFINE_HOST_FUNCTION(jsMockFunctionWithImplementationCleanup, (JSC::JSGlobalObject * jsGlobalObject, JSC::CallFrame* callframe))
 {
     auto& vm = jsGlobalObject->vm();
-    auto ctx = jsDynamicCast<MockWithImplementationCleanupData*>(callframe->argument(1));
+    auto ctx = tryJSDynamicCast<MockWithImplementationCleanupData*>(callframe->argument(1));
     if (!ctx) {
         return JSValue::encode(jsUndefined());
     }
 
-    auto fn = jsDynamicCast<JSMockFunction*>(ctx->internalField(0).get());
+    auto fn = tryJSDynamicCast<JSMockFunction*>(ctx->internalField(0).get());
     fn->implementation.set(vm, fn, ctx->internalField(1).get());
     fn->tail.set(vm, fn, ctx->internalField(2).get());
     fn->fallbackImplmentation.set(vm, fn, ctx->internalField(3).get());
@@ -1451,7 +1467,7 @@ BUN_DEFINE_HOST_FUNCTION(JSMock__jsSetSystemTime, (JSC::JSGlobalObject * globalO
 {
     JSValue argument0 = callframe->argument(0);
 
-    if (auto* dateInstance = jsDynamicCast<DateInstance*>(argument0)) {
+    if (auto* dateInstance = tryJSDynamicCast<DateInstance*>(argument0)) {
         if (std::isnormal(dateInstance->internalNumber())) {
             globalObject->overridenDateNow = dateInstance->internalNumber();
         }
@@ -1521,7 +1537,7 @@ BUN_DEFINE_HOST_FUNCTION(JSMock__jsSpyOn, (JSC::JSGlobalObject * lexicalGlobalOb
                 value = slot.getValue(globalObject, propertyKey);
             }
 
-            if (jsDynamicCast<JSMockFunction*>(value)) {
+            if (tryJSDynamicCast<JSMockFunction*>(value)) {
                 return JSValue::encode(value);
             }
         }
@@ -1555,15 +1571,14 @@ BUN_DEFINE_HOST_FUNCTION(JSMock__jsSpyOn, (JSC::JSGlobalObject * lexicalGlobalOb
             if (hasValue)
                 attributes = slot.attributes();
 
-            attributes |= PropertyAttribute::Accessor;
-
             if (JSModuleNamespaceObject* moduleNamespaceObject = tryJSDynamicCast<JSModuleNamespaceObject*>(object)) {
                 moduleNamespaceObject->overrideExportValue(globalObject, propertyKey, mock);
                 mock->spyAttributes |= JSMockFunction::SpyAttributeESModuleNamespace;
             } else if (auto index = parseIndex(propertyKey)) {
-                // For indexed properties, set the mock directly instead of wrapping in GetterSetter
+                // For indexed properties, store mock directly — putDirectIndex does not support GetterSetter
                 object->putDirectIndex(globalObject, *index, mock, attributes, PutDirectIndexLikePutDirect);
             } else {
+                attributes |= PropertyAttribute::Accessor;
                 object->putDirectAccessor(globalObject, propertyKey, JSC::GetterSetter::create(vm, globalObject, mock, mock), attributes);
             }
 

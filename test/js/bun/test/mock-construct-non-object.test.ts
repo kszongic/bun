@@ -1,0 +1,26 @@
+import { test, expect, jest } from "bun:test";
+
+test("mock function returning non-object from Reflect.construct does not crash", () => {
+  const mock = jest.fn().mockReturnValue(undefined);
+  // Reflect.construct calls the mock as a constructor.
+  // The mock returns undefined (non-object), which must not crash.
+  const result = Reflect.construct(mock, []);
+  expect(result).toBeDefined();
+});
+
+test("jest.fn() with no implementation does not crash on Reflect.construct", () => {
+  const mock = jest.fn();
+  const result = Reflect.construct(mock, []);
+  expect(result).toBeDefined();
+});
+
+test("spyOn mock does not crash on Reflect.construct", () => {
+  const obj = { prop: 42 };
+  const spy = jest.spyOn(obj, "prop" as any);
+  try {
+    const result = Reflect.construct(spy, []);
+    expect(result).toBeDefined();
+  } finally {
+    spy.mockRestore();
+  }
+});
