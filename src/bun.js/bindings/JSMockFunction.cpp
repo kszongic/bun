@@ -994,10 +994,16 @@ JSC_DEFINE_HOST_FUNCTION(jsMockFunctionCall, (JSGlobalObject * lexicalGlobalObje
 // InternalFunction construct handlers, so non-object results would crash.
 JSC_DEFINE_HOST_FUNCTION(jsMockFunctionConstruct, (JSGlobalObject * lexicalGlobalObject, CallFrame* callframe))
 {
+    auto& vm = JSC::getVM(lexicalGlobalObject);
+    auto scope = DECLARE_THROW_SCOPE(vm);
     JSC::EncodedJSValue result = jsMockFunctionCall(lexicalGlobalObject, callframe);
+    RETURN_IF_EXCEPTION(scope, {});
     JSValue decoded = JSValue::decode(result);
-    if (!decoded.isObject())
-        return JSValue::encode(callframe->thisValue());
+    if (!decoded.isObject()) {
+        Structure* structure = InternalFunction::createSubclassStructure(lexicalGlobalObject, asObject(callframe->newTarget()), lexicalGlobalObject->objectStructureForObjectConstructor());
+        RETURN_IF_EXCEPTION(scope, {});
+        return JSValue::encode(constructEmptyObject(vm, structure));
+    }
     return result;
 }
 
